@@ -7,7 +7,7 @@
 GBScreen::GBScreen(uint8_t *vram)
 {
 	this->vram = vram;
-	fb = (uint32_t*)malloc(144 * 160 * 4); // rgba8
+	fb = (uint32_t*)malloc(144 * 160 * 4); // argb8
 
 	lcdc = 0;
 	scroll_y = scroll_x = 0;
@@ -16,10 +16,12 @@ GBScreen::GBScreen(uint8_t *vram)
 	
 	memset(&palette, 0, sizeof(palette));
 
-	shades[0] = 0xff << 24;
-	shades[1] = 0x88 | (0x88 << 8) | (0x88 << 16) | (0xff << 24);
-	shades[2] = 0xaa | (0xaa << 8) | (0xaa << 16) | (0xff << 24);
-	shades[3] = 0xff | (0xff << 8) | (0xff << 16) | (0xff << 24);
+	shades[3] = 0xff000000;
+	shades[2] = 0xff888888;
+	shades[1] = 0xffaaaaaa;
+	shades[0] = 0xffffffff;
+
+	scanline = 0;
 }
 
 void GBScreen::refresh()
@@ -53,8 +55,8 @@ void GBScreen::refresh()
 						{
 							for(j = 0, k = 7; j < 8; j++, k--)
 							{
-								int rx = (x%32)*8 + k + scroll_x;
-								int ry = (y%32)*8 + i + scroll_y;
+								int rx = (x%32)*8 + k - scroll_x;
+								int ry = (y%32)*8 + i - scroll_y;
 								int c = ((bgdata[idx] & (1 << j)) != 0) | ( ((bgdata[idx + 1] & (1 << j)) != 0) << 1); 
 								if(c != 0)
 								{
@@ -66,9 +68,9 @@ void GBScreen::refresh()
 					}
 				}
 			}
-			else				// 0x8800 onwards
+			else	// 0x8800 onwards
 			{
-				printf("SHIT");
+				printf("don't currently handle high tiledata...");
 			}
 		}
 	}
@@ -92,7 +94,7 @@ uint8_t GBScreen::read(uint16_t virt)
 		break;
 
 		case 4:
-			return 144; // hack
+			return scanline; // hack
 		break;
 
 		case 7:
@@ -108,10 +110,10 @@ uint8_t GBScreen::read(uint16_t virt)
 
 void GBScreen::build_palette()
 {
-	palette[3] = shades[palette_reg & (3 << 6)];
-	palette[2] = shades[palette_reg & (3 << 4)];
-	palette[1] = shades[palette_reg & (3 << 2)];
-	palette[0] = shades[palette_reg & 3];
+	palette[3] = shades[(palette_reg & (3 << 6)) >> 6];
+	palette[2] = shades[(palette_reg & (3 << 4)) >> 4];
+	palette[1] = shades[(palette_reg & (3 << 2)) >> 2];
+	palette[0] = shades[(palette_reg & 3)];
 }
 
 void GBScreen::write(uint16_t virt, uint8_t v)
@@ -156,5 +158,18 @@ void GBScreen::write(uint16_t virt, uint8_t v)
 			printf("unimplemented lcd register write %02x\n", val);
 			exit(0);
 		break;
+	}
+}
+
+void GBScreen::start_frame()
+{
+	scanline = 0;
+}
+
+void GBScreen::step()
+{
+	if(scanline != VBLANK_END)
+	{
+		scanline++;
 	}
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <exception>
 
 #include "screen.h"
 
@@ -9,7 +10,7 @@ class CPU
 public:
 	CPU();
 
-	void step();
+	bool step();
 	
 	uint8_t read8(uint16_t virt);
 	void write8(uint16_t virt, uint8_t v);
@@ -88,3 +89,6 @@ public:
 		Z = (1 << 7)
 	};
 };
+
+class CPUException : public std::exception
+{};

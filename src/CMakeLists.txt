@@ -20,9 +20,7 @@ include_directories(
 ./core/cpu/
 )
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-set(CMAKE_AUTOMOC ON)
-find_package(Qt5Widgets)
+find_package(SDL2)
 
 add_executable(GamePerson ${SOURCES})
-target_link_libraries(GamePerson Qt5::Widgets pthread GL)
+target_link_libraries(GamePerson SDL2 pthread GL)

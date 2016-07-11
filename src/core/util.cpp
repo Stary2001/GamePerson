@@ -6,6 +6,11 @@ size_t util::load_buffer(std::string name, uint8_t *&buff)
 {
 	std::ifstream f(name, std::ios::binary);
 
+	if(!f.good())
+	{
+		throw util::LoadException("couldn't open file '" + name + "'");
+	}
+
 	f.seekg(0, std::ios::end);
 	size_t s = f.tellg();
 	f.seekg(0, std::ios::beg);

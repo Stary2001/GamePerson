@@ -1,13 +1,14 @@
 #include "cpu.h"
 #include "util.h"
 #include <string.h>
+#include <iostream>
 
 CPU::CPU()
 {
 	size_t s = util::load_buffer("gb.bios", bios);
-	if(s != 0xff)
+	if(s != 256)
 	{
-		// invalid rom
+		throw util::LoadException("BIOS has wrong size!");
 	}
 
 	flags.bios_enabled = true;
@@ -19,7 +20,6 @@ CPU::CPU()
 	hram = (uint8_t*)malloc(126);
 
 	cart_size = util::load_buffer("cart.bin", cart);
-	printf("cart %x\n", cart_size);
 	cycles = 0;
 
 	screen = new GBScreen(vram);
@@ -136,7 +136,7 @@ void CPU::update_zero_flag(uint16_t v)
 	}
 }
 
-void CPU::step()
+bool CPU::step()
 {
 	uint8_t instr = read8(regs.pc);
 
@@ -416,7 +416,6 @@ void CPU::step()
 				uint8_t val = read8(regs.hl.full);
 				regs.af.a -= val;
 				update_zero_flag(regs.af.a);
-
 				cycles += 8;
 			}
 		break;
@@ -623,7 +622,7 @@ void CPU::step()
 
 				default:
 					printf("unhandled bitop %02x at pc %04x\n", bitop, regs.pc);
-					exit(0);
+					return true;
 				break;
 			}
 
@@ -690,7 +689,7 @@ void CPU::step()
 
 		default:
 			printf("unhandled opcode %02x at pc %04x\n", instr, regs.pc);
-			exit(0);
+			return true;
 		break;
 	}
 
@@ -702,4 +701,6 @@ void CPU::step()
 	{
 		jump = false;
 	}
+
+	return false;
 }
