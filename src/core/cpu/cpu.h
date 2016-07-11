@@ -31,6 +31,8 @@ public:
 
 	uint64_t cycles;
 
+	bool int_enable;
+
 	GBScreen *screen;
 
 	struct
