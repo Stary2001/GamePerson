@@ -25,6 +25,17 @@ CPU::CPU()
 	screen = new GBScreen(vram);
 }
 
+CPU::~CPU()
+{
+	free(vram);
+	free(wram);
+	free(hram);
+	free(bios);
+	free(cart);
+
+	delete screen;
+}
+
 uint8_t CPU::read8(uint16_t virt)
 {
 	if(virt < 0x100 && flags.bios_enabled)

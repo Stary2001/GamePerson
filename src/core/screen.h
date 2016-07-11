@@ -9,6 +9,7 @@ class GBScreen
 public:
 	GBScreen(uint8_t *vram);
 	GBScreen(uint8_t *vram, uint32_t *fb_data);
+	~GBScreen();
 
 	uint8_t *vram;
 	uint32_t *fb;

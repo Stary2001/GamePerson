@@ -47,5 +47,12 @@ int main(int argc, char ** argv)
 		SDL_RenderCopy(sdlRenderer, screen_tex, NULL, NULL);
 		SDL_RenderPresent(sdlRenderer);
 	}
+
+	SDL_DestroyTexture(screen_tex);
+	SDL_DestroyRenderer(sdlRenderer);
+	SDL_DestroyWindow(win);
+
+	delete c;
+
 	SDL_Quit();
 }

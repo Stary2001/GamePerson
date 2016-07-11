@@ -9,6 +9,7 @@ class CPU
 {
 public:
 	CPU();
+	~CPU();
 
 	bool step();
 	

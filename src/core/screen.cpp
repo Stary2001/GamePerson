@@ -24,6 +24,11 @@ GBScreen::GBScreen(uint8_t *vram)
 	scanline = 0;
 }
 
+GBScreen::~GBScreen()
+{
+	free(fb);
+}
+
 void GBScreen::refresh()
 {
 	memset(fb, 0xff, 160*144*4);
