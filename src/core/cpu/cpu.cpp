@@ -100,7 +100,7 @@ uint16_t CPU::read16(uint16_t virt)
 	}
 	else if(virt <= cart_size)
 	{
-		return cart[virt];
+		return cart[virt] | (cart[virt+1] << 8);
 	}
 	else if(virt >= 0x8000 && virt <= 0x9fff)
 	{
@@ -434,6 +434,12 @@ bool CPU::step()
 		case 0xc1:
 			regs.bc.full = read16(regs.sp);
 			regs.sp += 2;
+			cycles += 12;
+		break;
+
+		case 0xc3:
+			regs.pc = read16(regs.pc+1);
+			jump = true;
 			cycles += 12;
 		break;
 
