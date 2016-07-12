@@ -12,9 +12,13 @@ GBScreen::GBScreen(uint8_t *vram)
 	lcdc = 0;
 	scroll_y = scroll_x = 0;
 	ct = 0;
-	palette_reg = 0;
-	
-	memset(&palette, 0, sizeof(palette));
+	bg_palette_reg = 0;
+	sp0_palette_reg = 0;
+	sp1_palette_reg = 0;
+
+	memset(bg_palette, 0, sizeof(bg_palette));
+	memset(sp0_palette, 0, sizeof(sp0_palette));
+	memset(sp1_palette, 0, sizeof(sp1_palette));
 
 	shades[3] = 0xff000000;
 	shades[2] = 0xff888888;
@@ -65,7 +69,7 @@ void GBScreen::refresh()
 								int c = ((bgdata[idx] & (1 << j)) != 0) | ( ((bgdata[idx + 1] & (1 << j)) != 0) << 1); 
 								if(c != 0)
 								{
-									fb[(ry%160) * 160 + rx%160] = palette[c];
+									fb[(ry%160) * 160 + rx%160] = bg_palette[c];
 								}
 							}
 							idx += 2;
@@ -90,6 +94,10 @@ uint8_t GBScreen::read(uint16_t virt)
 			return lcdc;
 		break;
 
+		case 1:
+			return (stat << 3) | mode | ((int)coincidence << 2);
+		break;
+
 		case 2:
 			return scroll_y;
 		break;
@@ -103,7 +111,7 @@ uint8_t GBScreen::read(uint16_t virt)
 		break;
 
 		case 7:
-			return palette_reg;
+			return bg_palette_reg;
 		break;
 
 		default:
@@ -113,12 +121,26 @@ uint8_t GBScreen::read(uint16_t virt)
 	}
 }
 
-void GBScreen::build_palette()
+void GBScreen::build_bg_palette()
 {
-	palette[3] = shades[(palette_reg & (3 << 6)) >> 6];
-	palette[2] = shades[(palette_reg & (3 << 4)) >> 4];
-	palette[1] = shades[(palette_reg & (3 << 2)) >> 2];
-	palette[0] = shades[(palette_reg & 3)];
+	bg_palette[3] = shades[(bg_palette_reg & (3 << 6)) >> 6];
+	bg_palette[2] = shades[(bg_palette_reg & (3 << 4)) >> 4];
+	bg_palette[1] = shades[(bg_palette_reg & (3 << 2)) >> 2];
+	bg_palette[0] = shades[(bg_palette_reg & 3)];
+}
+
+void GBScreen::build_sp0_palette()
+{
+	sp0_palette[3] = shades[(sp0_palette_reg & (3 << 6)) >> 6];
+	sp0_palette[2] = shades[(sp0_palette_reg & (3 << 4)) >> 4];
+	sp0_palette[1] = shades[(sp0_palette_reg & (3 << 2)) >> 2];
+}
+
+void GBScreen::build_sp1_palette()
+{
+	sp1_palette[3] = shades[(sp1_palette_reg & (3 << 6)) >> 6];
+	sp1_palette[2] = shades[(sp1_palette_reg & (3 << 4)) >> 4];
+	sp1_palette[1] = shades[(sp1_palette_reg & (3 << 2)) >> 2];
 }
 
 void GBScreen::write(uint16_t virt, uint8_t v)
@@ -139,6 +161,10 @@ void GBScreen::write(uint16_t virt, uint8_t v)
 			bg_display = (v & 1) != 0;
 		break;
 
+		case 1:
+			stat = v >> 3;
+		break;
+
 		case 2:
 			scroll_y = v;
 			refresh();
@@ -155,8 +181,22 @@ void GBScreen::write(uint16_t virt, uint8_t v)
 		break;
 
 		case 7:
-			palette_reg = v;
-			build_palette();
+			bg_palette_reg = v;
+			build_bg_palette();
+		break;
+
+		case 8:
+			sp0_palette_reg = v;
+			build_sp0_palette();
+		break;
+
+		case 9:
+			sp1_palette_reg = v;
+			build_sp1_palette();
+		break;
+
+		case 0x0a: // todo: window x / y
+		case 0x0b:
 		break;
 
 		default:
@@ -177,4 +217,9 @@ void GBScreen::step()
 	{
 		scanline++;
 	}
+}
+
+void GBScreen::process_interrupts()
+{
+	// Stuff.
 }

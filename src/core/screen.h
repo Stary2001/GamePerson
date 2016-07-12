@@ -21,6 +21,8 @@ public:
 	void start_frame();
 	void step();
 
+	void process_interrupts();
+
 	bool display_enable;
 	bool tilemap_select;
 	bool window_enable;
@@ -33,14 +35,26 @@ public:
 	uint8_t lcdc;
 	uint8_t scroll_x;
 	uint8_t scroll_y;
-	uint8_t palette_reg;
-	uint32_t palette[4];
+
+	uint8_t bg_palette_reg;
+	uint8_t sp0_palette_reg;
+	uint8_t sp1_palette_reg;
+
+	uint32_t bg_palette[4];
+	uint32_t sp0_palette[3];
+	uint32_t sp1_palette[3];
 	uint8_t ct;
 
 	uint32_t shades[4];
 
 	uint8_t scanline;
 
+	uint8_t stat;
+	uint8_t mode;
+	bool coincidence;
+
 private:
-	void build_palette();
+	void build_bg_palette();
+	void build_sp0_palette();
+	void build_sp1_palette();
 };

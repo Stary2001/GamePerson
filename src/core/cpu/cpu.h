@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <exception>
+#include <map>
 
 #include "screen.h"
 
@@ -12,13 +13,15 @@ public:
 	~CPU();
 
 	bool step();
-	
+
 	uint8_t read8(uint16_t virt);
 	void write8(uint16_t virt, uint8_t v);
 	uint16_t read16(uint16_t virt);
 	void write16(uint16_t virt, uint16_t v);
 
 	void update_zero_flag(uint16_t r);
+
+	void process_interrupts();
 
 	uint8_t *vram; // 0x2000
 	uint8_t *wram; // 0x2000
@@ -31,7 +34,22 @@ public:
 
 	uint64_t cycles;
 
-	bool int_enable;
+	bool old_en;
+	bool int_enable_master;
+	uint8_t int_enable;
+	uint8_t int_flags;
+
+	enum InterruptType
+	{
+		VBlank,
+		Stat,
+		Timer,
+		Serial,
+		Joypad,
+		NUM_INTERRUPTS
+	};
+
+	std::map<InterruptType, int> interrupts;
 
 	GBScreen *screen;
 

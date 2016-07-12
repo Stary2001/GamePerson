@@ -25,6 +25,11 @@ CPU::CPU()
 	screen = new GBScreen(vram);
 
 	int_enable = false;
+	interrupts[VBlank] = 0;
+	interrupts[Stat] = 0;
+	interrupts[Timer] = 0;
+	interrupts[Serial] = 0;
+	interrupts[Joypad] = 0;
 }
 
 CPU::~CPU()
@@ -60,6 +65,10 @@ uint8_t CPU::read8(uint16_t virt)
 	{
 		return wram[virt - 0xe000];
 	}
+	else if(virt == 0xff00)
+	{
+		return 0; // todo: joypad
+	}
 	else if(virt >= 0xff40 && virt <= 0xff4f) // this is the LCD!
 	{
 		return screen->read(virt);
@@ -68,9 +77,13 @@ uint8_t CPU::read8(uint16_t virt)
 	{
 		return hram[virt - 0xff80];
 	}
+	else if(virt == 0xffff)
+	{
+		return int_enable;
+	}
 	else
 	{
-		printf("unhandled read8 at %04x\n", virt);
+		printf("unhandled read8 at %04x, pc = %04x\n", virt, regs.pc);
 		exit(0);
 	}
 }
@@ -104,9 +117,25 @@ void CPU::write8(uint16_t virt, uint8_t v)
 			flags.bios_enabled = false;
 		}
 	}
+	else if(virt == 0xff0f) // int flags
+	{
+		int_flags = v;
+		int i = 0;
+		for(; i < NUM_INTERRUPTS; i++)
+		{
+			if(v & (1 << i)) // need to queue interrupt?
+			{
+				interrupts[(InterruptType)i]++;
+			}
+		}
+	}
+	else if(virt == 0xffff)
+	{
+		int_enable = v;
+	}
 	else
 	{
-		printf("unhandled write8 of %02x at %04x\n", v, virt);
+		printf("unhandled write8 of %02x at %04x, pc = %04x\n", v, virt, regs.pc);
 	}
 }
 
@@ -138,7 +167,7 @@ uint16_t CPU::read16(uint16_t virt)
 	}
 	else
 	{
-		printf("unhandled read16 at %04x\n", virt);
+		printf("unhandled read16 at %04x, pc = %04x\n", virt, regs.pc);
 		exit(0);
 	}
 }
@@ -167,7 +196,7 @@ void CPU::write16(uint16_t virt, uint16_t v)
 	}
 	else
 	{
-		printf("unhandled write16 of %04x at %04x\n", v, virt);
+		printf("unhandled write16 of %04x at %04x, pc = %04x\n", v, virt, regs.pc);
 	}
 }
 
@@ -183,8 +212,32 @@ void CPU::update_zero_flag(uint16_t v)
 	}
 }
 
+void CPU::process_interrupts()
+{
+	if(int_enable_master)
+	{
+		int i = 0;
+		for(; i < NUM_INTERRUPTS; i++)
+		{
+			if(interrupts[(InterruptType)i] != 0)
+			{
+				interrupts[(InterruptType)i]--;
+				printf("todo: trigger interrupt\n");
+			}
+		}
+	}
+}
+
 bool CPU::step()
 {
+	if(old_en != false) // delay for one cycle.
+	{
+		process_interrupts();
+		screen->process_interrupts();
+	}
+
+	old_en = int_enable_master;
+
 	uint8_t instr = read8(regs.pc);
 
 	bool jump = false;
@@ -228,6 +281,11 @@ bool CPU::step()
 			cycles += 8;
 		break;
 
+		case 0x0b: // dec bc
+			regs.bc.full--;
+			cycles += 8;
+		break;
+
 		case 0x0c: // inc c
 			regs.bc.c++;
 			cycles += 4;
@@ -249,6 +307,11 @@ bool CPU::step()
 			regs.de.full = read16(regs.pc+1);
 			regs.pc += 2;
 			cycles += 12;
+		break;
+
+		case 0x12: // ld (de), a
+			write8(regs.de.full, regs.af.a);
+			cycles += 8;
 		break;
 
 		case 0x13: // inc de
@@ -287,6 +350,11 @@ bool CPU::step()
 			regs.pc += ofs;
 			cycles += 12;
 		}
+		break;
+
+		case 0x19: // add hl, de
+			regs.hl.full += regs.de.full;
+			cycles += 12;
 		break;
 
 		case 0x1a: // ld a, (de)
@@ -367,10 +435,24 @@ bool CPU::step()
 		}
 		break;
 
+		case 0x2a: // ld hl, (nn)
+		{
+			uint16_t n = read16(regs.pc+1);
+			regs.pc+=2;
+			regs.hl.full = read16(n);
+			cycles += 16;
+		}
+		break;
+
 		case 0x2e: // ld l, n
 			regs.hl.l = read8(regs.pc+1);
 			regs.pc++;
 			cycles += 8;
+		break;
+
+		case 0x2f: // cpl a
+			regs.af.a = ~regs.af.a;
+			cycles += 4;
 		break;
 
 		case 0x31: // ld sp, nn
@@ -385,6 +467,20 @@ bool CPU::step()
 			cycles += 8;
 		break;
 
+		case 0x35:
+			write8(regs.hl.full, read8(regs.hl.full) - 1);
+			cycles += 12;
+		break;
+
+		case 0x36: // ld (hl), n
+		{
+			uint8_t v = read8(regs.pc+1);
+			regs.pc++;
+			write8(regs.hl.full, v);
+			cycles += 12;
+		}
+		break;
+
 		case 0x3d: // dec a
 			regs.af.a--;
 			update_zero_flag(regs.af.a);
@@ -397,9 +493,19 @@ bool CPU::step()
 			cycles += 8;
 		break;
 
+		case 0x47:
+			regs.bc.b = regs.af.a;
+			cycles += 4;
+		break;
+
 		case 0x4f: // ld c, a
 			regs.bc.c = regs.af.a;
 			cycles += 4;
+		break;
+
+		case 0x56: // ld d,(hl)
+			regs.de.d = read8(regs.hl.full);
+			cycles += 8;
 		break;
 
 		case 0x57: // ld d, a
@@ -407,18 +513,18 @@ bool CPU::step()
 			cycles += 4;
 		break;
 
+		case 0x5e: // ld e,(hl)
+			regs.de.e = read8(regs.hl.full);
+			cycles += 8;
+		break;
+
+		case 0x5f: // ld e, a
+			regs.de.e = regs.af.a;
+			cycles += 4;
+		break;
+
 		case 0x67: // ld h, a
 			regs.hl.h = regs.af.a;
-			cycles += 4;
-		break;
-
-		case 0x7b: // ld a, e
-			regs.af.a = regs.de.e;
-			cycles += 4;
-		break;
-
-		case 0x7c: // ld a, h
-			regs.af.a = regs.hl.h;
 			cycles += 4;
 		break;
 
@@ -432,29 +538,83 @@ bool CPU::step()
 			cycles += 4;
 		break;
 
+		case 0x79: // ld a, c
+			regs.af.a = regs.bc.c;
+			cycles += 4;
+		break;
+
+		case 0x7b: // ld a, e
+			regs.af.a = regs.de.e;
+			cycles += 4;
+		break;
+
+		case 0x7c: // ld a, h
+			regs.af.a = regs.hl.h;
+			cycles += 4;
+		break;
+
 		case 0x7d: // ld a, l
 			regs.af.a = regs.hl.l;
 			cycles += 4;
 		break;
 
+		case 0x7e: // ld a, (hl)
+			regs.af.a = read8(regs.hl.full);
+			cycles += 8;
+		break;
+
+		case 0x7f: // ld a, a
+			regs.af.a = regs.af.a;
+			cycles += 4;
+		break;
+
 		case 0x86: // add a, (hl)
-			{
-				uint8_t val = read8(regs.hl.full);
-				regs.af.a += val;
-				//todo: overflow
-				update_zero_flag(regs.af.a);
-				cycles += 8;
-			}
+		{
+			uint8_t val = read8(regs.hl.full);
+			regs.af.a += val;
+			update_zero_flag(regs.af.a);
+			cycles += 8;
+		}
+		break;
+
+		case 0x87:
+			regs.af.a += regs.af.a;
+			cycles += 4;
 		break;
 
 		case 0x90: // sub b
-			regs.af.a -= regs.bc.b; // todo: detect overflow.
+			regs.af.a -= regs.bc.b;
 			update_zero_flag(regs.af.a);
+			cycles += 4;
+		break;
+
+		case 0xa1: // and c
+			regs.af.a &= regs.bc.c;
+			cycles += 4;
+		break;
+
+		case 0xa7: // and a
+			regs.af.a &= regs.af.a;
+			cycles += 4;
+		break;
+
+		case 0xa9: // xor c
+			regs.af.a ^= regs.bc.c;
 			cycles += 4;
 		break;
 
 		case 0xaf: // xor a
 			regs.af.a = 0;
+			cycles += 4;
+		break;
+
+		case 0xb0: // or b
+			regs.af.a |= regs.bc.b;
+			cycles += 4;
+		break;
+
+		case 0xb1: // or c
+			regs.af.a |= regs.bc.c;
 			cycles += 4;
 		break;
 
@@ -491,6 +651,12 @@ bool CPU::step()
 			cycles += 16;
 		break;
 
+		case 0xca:
+			regs.pc = read16(regs.pc+1);
+			jump = true;
+			cycles += 12;
+		break;
+
 		case 0xcb: // BIT OPERATIONS
 		{
 			uint8_t bitop = read8(regs.pc+1);
@@ -507,6 +673,8 @@ bool CPU::step()
 				nullptr, // memory
 				&regs.af.a
 			};
+
+			uint8_t *r = regnums[(bitop&0xf) % 8];
 
 			switch(bitop & 0xf0)
 			{
@@ -542,8 +710,6 @@ bool CPU::step()
 				case 0x10:
 					{
 						// rl/rr
-
-						uint8_t *r = regnums[(bitop&0xf) % 8];
 						uint8_t v;
 						bool c = false;
 
@@ -601,35 +767,28 @@ bool CPU::step()
 
 						}
 					}
-				break;
+				break;*/
 
 
-				case 0x30: // sll/srl
-					if((bitop & 0xf) < 0x8) // left
+				case 0x30: // swap/srl
+					if((bitop & 0xf) < 0x8) // swap
 					{
-						uint8_t *r = regnums[(bitop&0xf) % 8];
-						if(r == nullptr)
-						{
+						uint8_t tmp, v;
 
-						}
-						else
-						{
+						if(r == nullptr) { tmp = read8(regs.hl.full); }
+						else { tmp = *r; }
 
-						}
+						v = (tmp & 0xf) << 4 | (tmp & 0xf0) >> 4;
+
+						if(r == nullptr) { write8(regs.hl.full, v); }
+						else { *r = v; }
 					}
 					else // right
 					{
-						uint8_t *r = regnums[(bitop&0xf) % 8];
-						if(r == nullptr)
-						{
-
-						}
-						else
-						{
-
-						}
+						printf("unhandled bitop %02x at pc %04x\n", bitop, regs.pc);
+						return true;
 					}
-				break;*/
+				break;
 
 				case 0x40: // bit
 				case 0x50:
@@ -638,15 +797,8 @@ bool CPU::step()
 				{
 					uint8_t val;
 
-					uint8_t *r = regnums[(bitop&0xf) % 8];
-					if(r == nullptr)
-					{
-						val = read8(regs.hl.full);
-					}
-					else
-					{
-						val = *r;
-					}
+					if(r == nullptr) { val = read8(regs.hl.full); }
+					else { val = *r; }
 
 					uint8_t bit = (((bitop & 0xf0) / 0x10) - 4) * 2 + ((bitop&0xf)>7 ? 1 : 0);
 					if(val & (1 << bit))
@@ -679,6 +831,10 @@ bool CPU::step()
 			}
 
 			cycles += 8;
+			if(r == nullptr) // (hl)
+			{
+				cycles += 8;
+			}
 		}
 		break;
 
@@ -693,6 +849,29 @@ bool CPU::step()
 		}
 		break;
 
+		case 0xd1: // pop de
+			regs.de.full = read16(regs.sp);
+			regs.sp += 2;
+			cycles += 12;
+		break;
+
+		case 0xd5: // push de
+			regs.sp -= 2;
+			write16(regs.sp, regs.de.full);
+			cycles += 16;
+		break;
+
+		case 0xdf: // rst 18h
+		{
+			printf("rst 18, pc: %04x\n", regs.pc);
+			regs.sp -= 2;
+			write16(regs.sp, regs.pc + 1);
+			regs.pc = 0x18;
+			jump = 1;
+			cycles += 16;
+		}
+		break;
+
 		case 0xe0: // LD (FF00+n),A
 		{
 			uint8_t val = read8(regs.pc+1);
@@ -704,9 +883,36 @@ bool CPU::step()
 		}
 		break;
 
+		case 0xe1: // pop hl
+			regs.hl.full = read16(regs.sp);
+			regs.sp += 2;
+			cycles += 12;
+		break;
+
 		case 0xe2: // LD (FF00+C),A
 			write8(0xff00 + regs.bc.c, regs.af.a);
 			cycles += 8;
+		break;
+
+		case 0xe5: // push hl
+			regs.sp -= 2;
+			write16(regs.sp, regs.hl.full);
+			cycles += 16;
+		break;
+
+		case 0xe6: // and n
+		{
+			uint8_t v = read8(regs.pc + 1);
+			regs.pc++;
+			regs.af.a &= v;
+			cycles += 8;
+		}
+		break;
+
+		case 0xe9: // jp (hl)
+			regs.pc = regs.hl.full;
+			jump = true;
+			cycles += 4;
 		break;
 
 		case 0xea: // LD (nn), A
@@ -714,6 +920,17 @@ bool CPU::step()
 			uint16_t val = read16(regs.pc+1);
 			regs.pc+=2;
 			write8(val, regs.af.a);
+			cycles += 16;
+		}
+		break;
+
+		case 0xef: // rst 28h
+		{
+			printf("rst 28, pc: %04x\n", regs.pc);
+			regs.sp -= 2;
+			write16(regs.sp, regs.pc + 1);
+			regs.pc = 0x28;
+			jump = 1;
 			cycles += 16;
 		}
 		break;
@@ -727,8 +944,36 @@ bool CPU::step()
 		}
 		break;
 
+		case 0xf1:
+			regs.af.full = read16(regs.sp);
+			regs.sp += 2;
+			cycles += 12;
+		break;
+
 		case 0xf3: // di - disable interrupts
-			int_enable = false;
+			old_en = false;
+			int_enable_master = false;
+			cycles += 4;
+		break;
+
+		case 0xf5: // push af
+			regs.sp -= 2;
+			write16(regs.sp, regs.af.full);
+			cycles += 16;
+		break;
+
+		case 0xfa: // LD A,(nn)
+		{
+			uint16_t addr = read16(regs.pc + 1);
+			regs.pc += 2;
+			regs.af.a = read8(addr);
+			cycles += 16;
+		}
+		break;
+
+		case 0xfb: // ei - enable interrupts
+			old_en = false;
+			int_enable_master = true;
 			cycles += 4;
 		break;
 
@@ -738,6 +983,17 @@ bool CPU::step()
 			regs.pc++;
 			update_zero_flag(regs.af.a - v);
 			cycles += 8;
+		}
+		break;
+
+		case 0xff: // rst 38h
+		{
+			printf("rst 38, pc: %04x\n", regs.pc);
+			regs.sp -= 2;
+			write16(regs.sp, regs.pc + 1);
+			regs.pc = 0x38;
+			jump = 1;
+			cycles += 16;
 		}
 		break;
 
@@ -755,6 +1011,5 @@ bool CPU::step()
 	{
 		jump = false;
 	}
-
 	return false;
 }
